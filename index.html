@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurant OS Local</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121214;
+      --panel: #1A1A1E;
+      --line: #2A2A30;
+      --muted: #8E8E93;
+      --text: #FFFFFF;
+      --silver: #E5E5EA;
+      --green: #34C759;
+      --red: #FF453A;
+      --amber: #FFB020;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    input, select, textarea, button {
+      font: inherit;
+    }
+    .glass {
+      background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
+      border: 1px solid var(--line);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
+    }
+    .soft-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+    }
+    .thin-scroll::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    .thin-scroll::-webkit-scrollbar-thumb {
+      background: #3A3A42;
+      border-radius: 999px;
+    }
+    .blink-ready {
+      animation: readyPulse 1.4s ease-in-out infinite;
+    }
+    .blink-risk {
+      animation: riskPulse 1.1s ease-in-out infinite;
+    }
+    @keyframes readyPulse {
+      0%, 100% {
+        border-color: rgba(52,199,89,0.55);
+        box-shadow: inset 0 0 0 1px rgba(52,199,89,0.15);
+      }
+      50% {
+        border-color: rgba(52,199,89,1);
+        box-shadow: inset 0 0 0 1px rgba(52,199,89,0.5);
+      }
+    }
+    @keyframes riskPulse {
+      0%, 100% {
+        opacity: 0.7;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+    .product-surface {
+      background:
+        radial-gradient(circle at 20% 20%, rgba(229,229,234,0.16), transparent 28%),
+        linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    }
+    .modal-backdrop {
+      background: rgba(0,0,0,0.68);
+      backdrop-filter: blur(14px);
+    }
+    .kds-preparing {
+      background: linear-gradient(180deg, rgba(58,58,66,0.95), rgba(35,35,41,0.95));
+    }
+    .kds-waiting {
+      background: linear-gradient(180deg, rgba(26,26,30,0.98), rgba(18,18,20,0.98));
+    }
+    .menu-grid {
+      grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    const AppState = {};
+    const LocalDatabase = {
+      key: "restaurant-os-local-v1",
+      load() {
+        const stored = localStorage.getItem(this.key);
+        const seed = this.seed();
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            Object.assign(AppState, seed, parsed);
+            AppState.currentUser = AppState.users.find(user => user.id === parsed.currentUser?.id) || AppState.users[0];
+          } catch (error) {
+            Object.assign(AppState, seed);
+          }
+        } else {
+          Object.assign(AppState, seed);
+        }
+      },
+      save() {
+        const serializable = {
+          users: AppState.users,
+          currentUser: AppState.currentUser,
+          tables: AppState.tables,
+          menu: AppState.menu,
+          inventory: AppState.inventory,
+          orders: AppState.orders,
+          activeView: AppState.activeView,
+          selectedTableId: AppState.selectedTableId,
+          cashClosures: AppState.cashClosures
+        };
+        localStorage.setItem(this.key, JSON.stringify(serializable));
+      },
+      reset() {
+        localStorage.removeItem(this.key);
+        Object.keys(AppState).forEach(key => delete AppState[key]);
+        Object.assign(AppState, this.seed());
+        render();
+        this.save();
+      },
+      seed() {
+        const inventory = [
+          { id: "ins-tortilla", nombre: "Tortilla de maíz", cantidadActual: 240, unidad: "pza", stockMinimo: 80 },
+          { id: "ins-aguacate", nombre: "Aguacate", cantidadActual: 24, unidad: "kg", stockMinimo: 8 },
+          { id: "ins-pollo", nombre: "Pollo", cantidadActual: 35, unidad: "kg", stockMinimo: 12 },
+          { id: "ins-res", nombre: "Carne de res", cantidadActual: 28, unidad: "kg", stockMinimo: 10 },
+          { id: "ins-pan", nombre: "Pan artesanal", cantidadActual: 72, unidad: "pza", stockMinimo: 24 },
+          { id: "ins-queso", nombre: "Queso", cantidadActual: 16, unidad: "kg", stockMinimo: 6 },
+          { id: "ins-papa", nombre: "Papa", cantidadActual: 50, unidad: "kg", stockMinimo: 18 },
+          { id: "ins-arroz", nombre: "Arroz", cantidadActual: 32, unidad: "kg", stockMinimo: 10 },
+          { id: "ins-lechuga", nombre: "Lechuga", cantidadActual: 19, unidad: "kg", stockMinimo: 8 },
+          { id: "ins-jitomate", nombre: "Jitomate", cantidadActual: 22, unidad: "kg", stockMinimo: 9 },
+          { id: "ins-cafe", nombre: "Café", cantidadActual: 9, unidad: "kg", stockMinimo: 5 },
+          { id: "ins-limon", nombre: "Limón", cantidadActual: 14, unidad: "kg", stockMinimo: 7 },
+          { id: "ins-azucar", nombre: "Azúcar", cantidadActual: 18, unidad: "kg", stockMinimo: 8 },
+          { id: "ins-chocolate", nombre: "Chocolate", cantidadActual: 6, unidad: "kg", stockMinimo: 3 },
+          { id: "ins-harina", nombre: "Harina", cantidadActual: 25, unidad: "kg", stockMinimo: 9 },
+          { id: "ins-fruta", nombre: "Fruta fresca", cantidadActual: 12, unidad: "kg", stockMinimo: 6 }
+        ];
+        const menu = [
+          { id: "prod-guacamole", nombre: "Guacamole de la casa", precio: 135, categoria: "entradas", stockInsumos: { "ins-aguacate": 0.35, "ins-tortilla": 8, "ins-jitomate": 0.08, "ins-limon": 0.04 } },
+          { id: "prod-papas", nombre: "Papas trufadas", precio: 115, categoria: "entradas", stockInsumos: { "ins-papa": 0.45, "ins-queso": 0.05 } },
+          { id: "prod-tacos", nombre: "Tacos de rib eye", precio: 178, categoria: "fuertes", stockInsumos: { "ins-res": 0.28, "ins-tortilla": 4, "ins-aguacate": 0.08, "ins-limon": 0.03 } },
+          { id: "prod-pollo", nombre: "Pollo brasa urbana", precio: 196, categoria: "fuertes", stockInsumos: { "ins-pollo": 0.45, "ins-papa": 0.22, "ins-lechuga": 0.06 } },
+          { id: "prod-burger", nombre: "Burger ahumada", precio: 185, categoria: "fuertes", stockInsumos: { "ins-res": 0.22, "ins-pan": 1, "ins-queso": 0.08, "ins-jitomate": 0.05, "ins-lechuga": 0.03 } },
+          { id: "prod-risotto", nombre: "Risotto norteño", precio: 164, categoria: "fuertes", stockInsumos: { "ins-arroz": 0.24, "ins-queso": 0.06, "ins-pollo": 0.12 } },
+          { id: "prod-ensalada", nombre: "Ensalada mineral", precio: 128, categoria: "entradas", stockInsumos: { "ins-lechuga": 0.22, "ins-jitomate": 0.12, "ins-aguacate": 0.08, "ins-limon": 0.03 } },
+          { id: "prod-cafe", nombre: "Café espresso doble", precio: 58, categoria: "bebidas", stockInsumos: { "ins-cafe": 0.02, "ins-azucar": 0.01 } },
+          { id: "prod-limonada", nombre: "Limonada mineral", precio: 64, categoria: "bebidas", stockInsumos: { "ins-limon": 0.16, "ins-azucar": 0.04 } },
+          { id: "prod-tefrio", nombre: "Té frío de frutas", precio: 72, categoria: "bebidas", stockInsumos: { "ins-fruta": 0.12, "ins-azucar": 0.03, "ins-limon": 0.02 } },
+          { id: "prod-brownie", nombre: "Brownie tibio", precio: 98, categoria: "postres", stockInsumos: { "ins-chocolate": 0.11, "ins-harina": 0.08, "ins-azucar": 0.06 } },
+          { id: "prod-tarta", nombre: "Tarta de temporada", precio: 104, categoria: "postres", stockInsumos: { "ins-fruta": 0.18, "ins-harina": 0.09, "ins-azucar": 0.05 } }
+        ];
+        return {
+          users: [
+            { id: "usr-admin", nombre: "Admin General", rol: "admin", pin: "0000" },
+            { id: "usr-mesero", nombre: "Ana Mesas", rol: "mesero", pin: "1111" },
+            { id: "usr-cajero", nombre: "Luis Caja", rol: "cajero", pin: "2222" },
+            { id: "usr-cocina", nombre: "Mar Cocina", rol: "cocina", pin: "3333" }
+          ],
+          currentUser: { id: "usr-admin", nombre: "Admin General", rol: "admin", pin: "0000" },
+          tables: Array.from({ length: 12 }, (value, index) => ({
+            id: "mesa-" + (index + 1),
+            numero: index + 1,
+            capacidad: index % 4 === 0 ? 6 : index % 3 === 0 ? 2 : 4,
+            estado: "libre",
+            totalActual: 0,
+            ordenId: null,
+            abiertaEn: null
+          })),
+          menu,
+          inventory,
+          orders: [],
+          activeView: "dashboard",
+          selectedTableId: null,
+          activeCategory: "todas",
+          search: "",
+          draftCart: [],
+          tipPercent: 10,
+          locked: false,
+          lockPin: "",
+          paymentModal: null,
+          cashModal: false,
+          userForm: { nombre: "", rol: "mesero", pin: "" },
+          stockForm: { insumoId: inventory[0].id, cantidad: "" },
+          cashClosures: []
+        };
+      }
+    };
+    const permissions = {
+      admin: ["dashboard", "tables", "pos", "kitchen", "inventory"],
+      mesero: ["tables", "pos"],
+      cajero: ["tables", "pos"],
+      cocina: ["kitchen"]
+    };
+    const viewLabels = {
+      dashboard: "Dashboard",
+      tables: "Mesas",
+      pos: "POS",
+      kitchen: "Cocina",
+      inventory: "Inventario"
+    };
+    const categories = ["todas", "entradas", "fuertes", "bebidas", "postres"];
+    const roleLabels = {
+      admin: "Administrador",
+      mesero: "Mesero",
+      cajero: "Cajero",
+      cocina: "Cocina"
+    };
+    const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+    const app = document.getElementById("app");
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
+    }
+    function uid(prefix) {
+      return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    }
+    function allowedViews() {
+      return permissions[AppState.currentUser.rol] || [];
+    }
+    function ensureAllowedView() {
+      const allowed = allowedViews();
+      if (!allowed.includes(AppState.activeView)) {
+        AppState.activeView = allowed[0] || "tables";
+      }
+      if (AppState.currentUser.rol === "cocina") {
+        AppState.activeView = "kitchen";
+      }
+    }
+    function setView(view) {
+      if (!allowedViews().includes(view)) {
+        return;
+      }
+      AppState.activeView = view;
+      if (view !== "pos") {
+        AppState.search = "";
+      }
+      persistAndRender();
+    }
+    function persistAndRender() {
+      LocalDatabase.save();
+      render();
+    }
+    function getTable(tableId) {
+      return AppState.tables.find(table => table.id === tableId);
+    }
+    function getProduct(productId) {
+      return AppState.menu.find(product => product.id === productId);
+    }
+    function getActiveOrdersForTable(tableId) {
+      return AppState.orders.filter(order => order.mesaId === tableId && order.estado !== "pagado");
+    }
+    function getPaidOrders() {
+      return AppState.orders.filter(order => order.estado === "pagado");
+    }
+    function getReadyOrders() {
+      return AppState.orders.filter(order => order.estado === "listo");
+    }
+    function getKitchenOrders() {
+      return AppState.orders.filter(order => order.estado === "cocina");
+    }
+    function getCriticalInventory() {
+      return AppState.inventory.filter(item => Number(item.cantidadActual) <= Number(item.stockMinimo));
+    }
+    function calculateItemsSubtotal(items) {
+      return items.reduce((sum, item) => {
+        const product = getProduct(item.id);
+        return sum + (product ? product.precio * item.cantidad : 0);
+      }, 0);
+    }
+    function calculateTotals(items, tipPercent) {
+      const subtotal = calculateItemsSubtotal(items);
+      const impuestos = subtotal * 0.16;
+      const propina = subtotal * (Number(tipPercent) / 100);
+      return { subtotal, impuestos, propina, total: subtotal + impuestos + propina };
+    }
+    function refreshTableTotals() {
+      AppState.tables.forEach(table => {
+        const activeOrders = getActiveOrdersForTable(table.id);
+        table.totalActual = activeOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+        if (activeOrders.length === 0 && table.estado === "libre") {
+          table.ordenId = null;
+        }
+      });
+    }
+    function tableHasReadyOrder(tableId) {
+      return AppState.orders.some(order => order.mesaId === tableId && order.estado === "listo");
+    }
+    function tableOpenMinutes(table) {
+      if (!table.abiertaEn) {
+        return "00:00";
+      }
+      const seconds = Math.max(0, Math.floor((Date.now() - Number(table.abiertaEn)) / 1000));
+      const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const rest = (seconds % 60).toString().padStart(2, "0");
+      return minutes + ":" + rest;
+    }
+    function orderElapsed(order) {
+      const seconds = Math.max(0, Math.floor((Date.now() - Number(order.timestamp)) / 1000));
+      const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const rest = (seconds % 60).toString().padStart(2, "0");
+      return minutes + ":" + rest;
+    }
+    function updateClock() {
+      const clocks = document.querySelectorAll("[data-clock]");
+      clocks.forEach(clock => {
+        clock.textContent = new Date().toLocaleTimeString("es-MX", { hour12: false });
+      });
+      document.querySelectorAll("[data-elapsed-order]").forEach(node => {
+        const order = AppState.orders.find(item => item.id === node.dataset.elapsedOrder);
+        if (order) {
+          node.textContent = orderElapsed(order);
+        }
+      });
+      document.querySelectorAll("[data-elapsed-table]").forEach(node => {
+        const table = getTable(node.dataset.elapsedTable);
+        if (table) {
+          node.textContent = tableOpenMinutes(table);
+        }
+      });
+    }
+    function changeUser(userId) {
+      const selected = AppState.users.find(user => user.id === userId);
+      if (!selected) {
+        return;
+      }
+      AppState.currentUser = selected;
+      AppState.selectedTableId = null;
+      AppState.draftCart = [];
+      ensureAllowedView();
+      persistAndRender();
+    }
+    function lockScreen() {
+      AppState.locked = true;
+      AppState.lockPin = "";
+      render();
+    }
+    function unlockScreen() {
+      if (AppState.lockPin === AppState.currentUser.pin) {
+        AppState.locked = false;
+        AppState.lockPin = "";
+        persistAndRender();
+      } else {
+        const input = document.getElementById("unlock-pin");
+        if (input) {
+          input.classList.add("border-red-500");
+          setTimeout(() => input.classList.remove("border-red-500"), 550);
+        }
+      }
+    }
+    function handleTableClick(tableId) {
+      const table = getTable(tableId);
+      if (!table) {
+        return;
+      }
+      if (table.estado === "sucia") {
+        AppState.selectedTableId = tableId;
+        AppState.activeView = "tables";
+        render();
+        return;
+      }
+      if (table.estado === "libre") {
+        table.estado = "ocupada";
+        table.abiertaEn = Date.now();
+        table.totalActual = 0;
+        table.ordenId = null;
+      }
+      AppState.selectedTableId = tableId;
+      AppState.draftCart = [];
+      AppState.activeView = "pos";
+      persistAndRender();
+    }
+    function cleanTable(tableId) {
+      const table = getTable(tableId);
+      if (!table) {
+        return;
+      }
+      table.estado = "libre";
+      table.totalActual = 0;
+      table.ordenId = null;
+      table.abiertaEn = null;
+      if (AppState.selectedTableId === tableId) {
+        AppState.selectedTableId = null;
+      }
+      persistAndRender();
+    }
+    function setCategory(category) {
+      AppState.activeCategory = category;
+      render();
+    }
+    function setSearch(value) {
+      AppState.search = value;
+      render();
+      const input = document.getElementById("menu-search");
+      if (input) {
+        input.focus();
+        input.setSelectionRange(value.length, value.length);
+      }
+    }
+    function addToCart(productId) {
+      const existing = AppState.draftCart.find(item => item.id === productId && item.notas === "");
+      if (existing) {
+        existing.cantidad += 1;
+      } else {
+        AppState.draftCart.push({ id: productId, cantidad: 1, notas: "" });
+      }
+      render();
+    }
+    function changeCartQuantity(index, delta) {
+      const item = AppState.draftCart[index];
+      if (!item) {
+        return;
+      }
+      item.cantidad += delta;
+      if (item.cantidad <= 0) {
+        AppState.draftCart.splice(index, 1);
+      }
+      render();
+    }
+    function setCartNote(index, value) {
+      const item = AppState.draftCart[index];
+      if (item) {
+        item.notas = value;
+      }
+    }
+    function setTip(value) {
+      AppState.tipPercent = Number(value);
+      render();
+    }
+    function canDiscountInventory(items) {
+      const required = {};
+      items.forEach(item => {
+        const product = getProduct(item.id);
+        if (product) {
+          Object.entries(product.stockInsumos).forEach(([insumoId, amount]) => {
+            required[insumoId] = (required[insumoId] || 0) + amount * item.cantidad;
+          });
+        }
+      });
+      const missing = Object.entries(required).map(([insumoId, amount]) => {
+        const ingredient = AppState.inventory.find(item => item.id === insumoId);
+        return ingredient && Number(ingredient.cantidadActual) >= amount ? null : ingredient?.nombre || insumoId;
+      }).filter(Boolean);
+      return { ok: missing.length === 0, missing, required };
+    }
+    function discountInventory(required) {
+      Object.entries(required).forEach(([insumoId, amount]) => {
+        const ingredient = AppState.inventory.find(item => item.id === insumoId);
+        if (ingredient) {
+          ingredient.cantidadActual = Math.max(0, Number((Number(ingredient.cantidadActual) - amount).toFixed(3)));
+        }
+      });
+    }
+    function sendToKitchen() {
+      const table = getTable(AppState.selectedTableId);
+      if (!table || AppState.draftCart.length === 0) {
+        return;
+      }
+      const inventoryCheck = canDiscountInventory(AppState.draftCart);
+      if (!inventoryCheck.ok) {
+        AppState.systemNotice = "Stock insuficiente: " + inventoryCheck.missing.join(", ");
+        render();
+        return;
+      }
+      const totals = calculateTotals(AppState.draftCart, AppState.tipPercent);
+      const order = {
+        id: uid("ord"),
+        mesaId: table.id,
+        items: AppState.draftCart.map(item => ({ id: item.id, cantidad: item.cantidad, notas: item.notas.trim() })),
+        subtotal: Number(totals.subtotal.toFixed(2)),
+        impuestos: Number(totals.impuestos.toFixed(2)),
+        propina: Number(totals.propina.toFixed(2)),
+        total: Number(totals.total.toFixed(2)),
+        estado: "cocina",
+        timestamp: Date.now(),
+        preparado: false,
+        meseroId: AppState.currentUser.id,
+        metodoPago: null,
+        cerradoEn: null
+      };
+      discountInventory(inventoryCheck.required);
+      AppState.orders.push(order);
+      table.estado = "ocupada";
+      table.ordenId = order.id;
+      table.totalActual = Number((Number(table.totalActual || 0) + order.total).toFixed(2));
+      table.abiertaEn = table.abiertaEn || Date.now();
+      AppState.selectedTableId = null;
+      AppState.draftCart = [];
+      AppState.activeView = allowedViews().includes("tables") ? "tables" : "kitchen";
+      AppState.systemNotice = "Comanda enviada a cocina";
+      persistAndRender();
+    }
+    function requestBill(tableId) {
+      const table = getTable(tableId || AppState.selectedTableId);
+      if (!table) {
+        return;
+      }
+      table.estado = "cuenta";
+      AppState.systemNotice = "Cuenta solicitada para Mesa " + table.numero;
+      persistAndRender();
+    }
+    function openPayment(tableId) {
+      const table = getTable(tableId || AppState.selectedTableId);
+      if (!table) {
+        return;
+      }
+      AppState.paymentModal = { mesaId: table.id, metodo: "Efectivo" };
+      render();
+    }
+    function setPaymentMethod(method) {
+      if (AppState.paymentModal) {
+        AppState.paymentModal.metodo = method;
+        render();
+      }
+    }
+    function closePaymentModal() {
+      AppState.paymentModal = null;
+      render();
+    }
+    function processPayment() {
+      if (!AppState.paymentModal) {
+        return;
+      }
+      const table = getTable(AppState.paymentModal.mesaId);
+      if (!table) {
+        return;
+      }
+      const activeOrders = getActiveOrdersForTable(table.id);
+      activeOrders.forEach(order => {
+        order.estado = "pagado";
+        order.metodoPago = AppState.paymentModal.metodo;
+        order.cajeroId = AppState.currentUser.id;
+        order.cerradoEn = Date.now();
+      });
+      table.estado = "sucia";
+      table.totalActual = 0;
+      table.ordenId = null;
+      AppState.paymentModal = null;
+      AppState.selectedTableId = null;
+      AppState.draftCart = [];
+      AppState.systemNotice = "Pago procesado. Mesa marcada como sucia";
+      persistAndRender();
+    }
+    function markPreparing(orderId) {
+      const order = AppState.orders.find(order => order.id === orderId);
+      if (!order || order.estado !== "cocina") {
+        return;
+      }
+      order.preparado = true;
+      persistAndRender();
+    }
+    function markReady(orderId) {
+      const order = AppState.orders.find(order => order.id === orderId);
+      if (!order || order.estado !== "cocina") {
+        return;
+      }
+      order.estado = "listo";
+      order.preparado = true;
+      order.listoEn = Date.now();
+      persistAndRender();
+    }
+    function addStock(event) {
+      event.preventDefault();
+      const ingredient = AppState.inventory.find(item => item.id === AppState.stockForm.insumoId);
+      const amount = Number(AppState.stockForm.cantidad);
+      if (!ingredient || !Number.isFinite(amount) || amount <= 0) {
+        return;
+      }
+      ingredient.cantidadActual = Number((Number(ingredient.cantidadActual) + amount).toFixed(3));
+      AppState.stockForm.cantidad = "";
+      AppState.systemNotice = "Stock actualizado";
+      persistAndRender();
+    }
+    function updateStockField(field, value) {
+      AppState.stockForm[field] = value;
+    }
+    function createUser(event) {
+      event.preventDefault();
+      const nombre = AppState.userForm.nombre.trim();
+      const pin = AppState.userForm.pin.trim();
+      const rol = AppState.userForm.rol;
+      if (!nombre || !pin || pin.length < 4) {
+        AppState.systemNotice = "Captura nombre y PIN de al menos 4 dígitos";
+        render();
+        return;
+      }
+      AppState.users.push({ id: uid("usr"), nombre, rol, pin });
+      AppState.userForm = { nombre: "", rol: "mesero", pin: "" };
+      AppState.systemNotice = "Usuario creado";
+      persistAndRender();
+    }
+    function updateUserForm(field, value) {
+      AppState.userForm[field] = value;
+    }
+    function deleteUser(userId) {
+      if (AppState.users.length <= 1 || AppState.currentUser.id === userId) {
+        return;
+      }
+      AppState.users = AppState.users.filter(user => user.id !== userId);
+      persistAndRender();
+    }
+    function openCashModal() {
+      AppState.cashModal = true;
+      render();
+    }
+    function closeCashModal() {
+      AppState.cashModal = false;
+      render();
+    }
+    function registerCashClosure() {
+      const paidOrders = getPaidOrders();
+      const total = paidOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+      AppState.cashClosures.push({ id: uid("cash"), usuarioId: AppState.currentUser.id, timestamp: Date.now(), total, ordenes: paidOrders.length });
+      AppState.cashModal = false;
+      AppState.systemNotice = "Cierre de caja registrado";
+      persistAndRender();
+    }
+    function dismissNotice() {
+      AppState.systemNotice = "";
+      render();
+    }
+    function render() {
+      ensureAllowedView();
+      refreshTableTotals();
+      app.innerHTML = renderShell();
+      updateClock();
+    }
+    function renderShell() {
+      return `
+        <div class="min-h-screen bg-[#121214]">
+          ${renderToolbar()}
+          <main class="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
+            ${AppState.systemNotice ? renderNotice() : ""}
+            ${renderActiveView()}
+          </main>
+          ${AppState.paymentModal ? renderPaymentModal() : ""}
+          ${AppState.cashModal ? renderCashModal() : ""}
+          ${AppState.locked ? renderLockScreen() : ""}
+        </div>
+      `;
+    }
+    function renderToolbar() {
+      const readyCount = getReadyOrders().length;
+      const criticalCount = getCriticalInventory().length;
+      const canCashClose = ["admin", "cajero"].includes(AppState.currentUser.rol);
+      return `
+        <header class="sticky top-0 z-30 border-b border-[#2A2A30] bg-[#121214]/95 backdrop-blur-xl">
+          <div class="mx-auto flex min-h-[76px] w-full max-w-[1500px] flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:px-8">
+            <div class="flex min-w-0 items-center justify-between gap-3">
+              <button onclick="setView('${allowedViews()[0]}')" class="flex items-center gap-3 rounded-xl px-1 text-left transition duration-200 hover:opacity-80">
+                <span class="grid h-9 w-9 place-items-center rounded-xl border border-[#2A2A30] bg-[#1A1A1E] font-bold tracking-tight">RO</span>
+                <span>
+                  <span class="block text-sm font-bold tracking-wide text-white">Restaurant OS</span>
+                  <span class="flex items-center gap-2 text-xs text-[#8E8E93]"><span class="h-2 w-2 rounded-full bg-[#34C759]"></span>Sistema local activo</span>
+                </span>
+              </button>
+              <div class="rounded-xl border border-[#2A2A30] bg-[#1A1A1E] px-3 py-2 text-sm font-medium text-[#E5E5EA] lg:hidden" data-clock></div>
+            </div>
+            <nav class="flex flex-1 items-center gap-2 overflow-x-auto thin-scroll">
+              ${allowedViews().map(view => `
+                <button onclick="setView('${view}')" class="${AppState.activeView === view ? "bg-[#2A2A30] text-white" : "text-[#8E8E93] hover:bg-[#1A1A1E] hover:text-white"} shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition duration-200 ease-in-out">${viewLabels[view]}</button>
+              `).join("")}
+            </nav>
+            <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+              <div class="hidden rounded-xl border border-[#2A2A30] bg-[#1A1A1E] px-3 py-2 text-sm font-medium text-[#E5E5EA] lg:block" data-clock></div>
+              <label class="relative">
+                <select onchange="changeUser(this.value)" class="w-[210px] appearance-none rounded-xl border border-[#2A2A30] bg-[#1A1A1E] px-3 py-2 pr-8 text-sm text-white outline-none transition duration-200 hover:border-[#3A3A42]">
+                  ${AppState.users.map(user => `<option value="${user.id}" ${user.id === AppState.currentUser.id ? "selected" : ""}>${escapeHtml(user.nombre)} · ${roleLabels[user.rol]}</option>`).join("")}
+                </select>
+                <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#8E8E93]">⌄</span>
+              </label>
+              <div class="flex items-center gap-1 rounded-xl border border-[#2A2A30] bg-[#1A1A1E] p-1">
+                <button onclick="getReadyOrders().length ? setView('tables') : null" class="relative grid h-9 w-9 place-items-center rounded-lg text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]" aria-label="Órdenes listas">
+                  ${bellIcon()}
+                  ${readyCount ? `<span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#34C759] px-1 text-[10px] font-bold text-black">${readyCount}</span>` : ""}
+                </button>
+                <button onclick="setView('inventory')" class="${criticalCount ? "blink-risk text-[#FFB020]" : "text-[#8E8E93]"} relative grid h-9 w-9 place-items-center rounded-lg transition duration-200 hover:bg-[#2A2A30]" aria-label="Inventario crítico">
+                  ${warningIcon()}
+                  ${criticalCount ? `<span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#FF453A] px-1 text-[10px] font-bold text-white">${criticalCount}</span>` : ""}
+                </button>
+              </div>
+              ${canCashClose ? `<button onclick="openCashModal()" class="rounded-xl border border-[#2A2A30] bg-[#1A1A1E] px-4 py-2 text-sm font-medium text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]">Cierre de Caja</button>` : ""}
+              <button onclick="lockScreen()" class="grid h-10 w-10 place-items-center rounded-xl border border-[#2A2A30] bg-[#1A1A1E] text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]" aria-label="Bloquear pantalla">${lockIcon()}</button>
+            </div>
+          </div>
+        </header>
+      `;
+    }
+    function renderNotice() {
+      return `
+        <div class="mb-4 flex items-center justify-between gap-3 rounded-xl border border-[#2A2A30] bg-[#1A1A1E] px-4 py-3 text-sm text-[#E5E5EA]">
+          <span>${escapeHtml(AppState.systemNotice)}</span>
+          <button onclick="dismissNotice()" class="rounded-lg px-2 py-1 text-[#8E8E93] transition duration-200 hover:bg-[#2A2A30] hover:text-white">Cerrar</button>
+        </div>
+      `;
+    }
+    function renderActiveView() {
+      if (AppState.activeView === "dashboard") {
+        return renderDashboard();
+      }
+      if (AppState.activeView === "tables") {
+        return renderTables();
+      }
+      if (AppState.activeView === "pos") {
+        return renderPOS();
+      }
+      if (AppState.activeView === "kitchen") {
+        return renderKDS();
+      }
+      if (AppState.activeView === "inventory") {
+        return renderInventory();
+      }
+      return renderTables();
+    }
+    function renderDashboard() {
+      const paidOrders = getPaidOrders();
+      const income = paidOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+      const occupied = AppState.tables.filter(table => ["ocupada", "cuenta"].includes(table.estado)).length;
+      const occupation = Math.round((occupied / AppState.tables.length) * 100);
+      const critical = getCriticalInventory().length;
+      const bars = buildSalesBars();
+      return `
+        <section class="space-y-5">
+          <div class="grid gap-4 md:grid-cols-3">
+            ${metricCard("Ingresos netos del día", money.format(income), "Órdenes pagadas: " + paidOrders.length)}
+            ${metricCard("Ocupación de salón", occupation + "%", occupied + " de " + AppState.tables.length + " mesas activas")}
+            ${metricCard("Alertas de inventario", String(critical), critical ? "Insumos bajo mínimo" : "Todo el stock estable")}
+          </div>
+          <div class="grid gap-5 xl:grid-cols-[1.45fr_1fr]">
+            <section class="soft-panel rounded-xl p-5">
+              <div class="mb-5 flex items-end justify-between gap-4">
+                <div>
+                  <h1 class="text-xl font-medium tracking-tight text-white">Tendencia de ventas</h1>
+                  <p class="mt-1 text-sm text-[#8E8E93]">Lectura local basada en las órdenes procesadas.</p>
+                </div>
+                <span class="rounded-lg bg-[#2A2A30] px-3 py-1 text-xs font-medium text-[#E5E5EA]">Hoy</span>
+              </div>
+              <div class="flex h-72 items-end gap-3 rounded-xl border border-[#2A2A30] bg-[#121214] p-4">
+                ${bars.map(bar => `
+                  <div class="flex h-full flex-1 flex-col justify-end gap-2">
+                    <div class="rounded-t-xl border border-[#3A3A42] bg-[#E5E5EA]" style="height:${bar.height}%"></div>
+                    <span class="text-center text-[11px] text-[#8E8E93]">${bar.label}</span>
+                  </div>
+                `).join("")}
+              </div>
+            </section>
+            <section class="soft-panel rounded-xl p-5">
+              <div class="mb-5">
+                <h2 class="text-xl font-medium tracking-tight text-white">Personal y administradores</h2>
+                <p class="mt-1 text-sm text-[#8E8E93]">Alta local de empleados con PIN para terminal.</p>
+              </div>
+              <form onsubmit="createUser(event)" class="grid gap-3">
+                <input value="${escapeHtml(AppState.userForm.nombre)}" oninput="updateUserForm('nombre', this.value)" class="rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-sm text-white outline-none focus:border-[#E5E5EA]" placeholder="Nombre del empleado">
+                <div class="grid grid-cols-2 gap-3">
+                  <select onchange="updateUserForm('rol', this.value)" class="rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-sm text-white outline-none focus:border-[#E5E5EA]">
+                    ${Object.keys(roleLabels).map(role => `<option value="${role}" ${AppState.userForm.rol === role ? "selected" : ""}>${roleLabels[role]}</option>`).join("")}
+                  </select>
+                  <input value="${escapeHtml(AppState.userForm.pin)}" oninput="updateUserForm('pin', this.value.replace(/\\D/g, '').slice(0, 8))" class="rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-sm text-white outline-none focus:border-[#E5E5EA]" placeholder="PIN" inputmode="numeric">
+                </div>
+                <button class="rounded-xl bg-[#E5E5EA] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Crear usuario</button>
+              </form>
+              <div class="mt-5 max-h-72 space-y-2 overflow-auto thin-scroll">
+                ${AppState.users.map(user => `
+                  <div class="flex items-center justify-between gap-3 rounded-xl border border-[#2A2A30] bg-[#121214] px-3 py-3">
+                    <div class="min-w-0">
+                      <p class="truncate text-sm font-medium text-white">${escapeHtml(user.nombre)}</p>
+                      <p class="text-xs text-[#8E8E93]">${roleLabels[user.rol]} · PIN ${escapeHtml(user.pin)}</p>
+                    </div>
+                    <button onclick="deleteUser('${user.id}')" class="rounded-lg px-3 py-2 text-xs text-[#8E8E93] transition duration-200 hover:bg-[#2A2A30] hover:text-white">Eliminar</button>
+                  </div>
+                `).join("")}
+              </div>
+            </section>
+          </div>
+        </section>
+      `;
+    }
+    function buildSalesBars() {
+      const labels = ["10", "11", "12", "13", "14", "15", "16", "17"];
+      const paid = getPaidOrders();
+      const values = labels.map(label => {
+        const hour = Number(label);
+        return paid.filter(order => new Date(order.cerradoEn || order.timestamp).getHours() === hour).reduce((sum, order) => sum + Number(order.total || 0), 0);
+      });
+      const base = values.every(value => value === 0) ? [420, 690, 510, 980, 760, 1120, 890, 1240] : values;
+      const max = base.reduce((highest, value) => Math.max(highest, value), 1);
+      return labels.map((label, index) => ({ label: label + "h", height: Math.max(10, Math.round((base[index] / max) * 100)) }));
+    }
+    function metricCard(title, value, detail) {
+      return `
+        <article class="soft-panel rounded-xl p-5">
+          <p class="text-sm text-[#8E8E93]">${title}</p>
+          <p class="mt-3 text-3xl font-light tracking-tight text-white">${value}</p>
+          <p class="mt-2 text-sm text-[#8E8E93]">${detail}</p>
+        </article>
+      `;
+    }
+    function renderTables() {
+      const selected = AppState.selectedTableId ? getTable(AppState.selectedTableId) : null;
+      return `
+        <section class="grid gap-5 xl:grid-cols-[1.4fr_0.6fr]">
+          <div class="soft-panel rounded-xl p-5">
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h1 class="text-xl font-medium tracking-tight text-white">Plano de planta</h1>
+                <p class="mt-1 text-sm text-[#8E8E93]">Mesa libre, ocupada, cuenta pedida o sucia en tiempo real.</p>
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs text-[#8E8E93]">
+                <span class="rounded-lg border border-[#2A2A30] px-3 py-1">Libre</span>
+                <span class="rounded-lg border border-[#4A4A52] bg-[#2A2A30] px-3 py-1">Ocupada</span>
+                <span class="rounded-lg border border-[#34C759] px-3 py-1 text-[#34C759]">Lista/Cuenta</span>
+                <span class="rounded-lg border border-[#FFB020] px-3 py-1 text-[#FFB020]">Sucia</span>
+              </div>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              ${AppState.tables.map(table => renderTableCard(table)).join("")}
+            </div>
+          </div>
+          <aside class="soft-panel rounded-xl p-5">
+            ${selected ? renderTableSidePanel(selected) : `
+              <div class="flex min-h-[360px] flex-col justify-center rounded-xl border border-[#2A2A30] bg-[#121214] p-5 text-center">
+                <p class="text-lg font-medium text-white">Selecciona una mesa</p>
+                <p class="mt-2 text-sm text-[#8E8E93]">Al abrir una mesa libre se activa el POS y se vincula la comanda.</p>
+              </div>
+            `}
+          </aside>
+        </section>
+      `;
+    }
+    function renderTableCard(table) {
+      const activeOrders = getActiveOrdersForTable(table.id);
+      const ready = tableHasReadyOrder(table.id);
+      const visual = table.estado === "libre" ? "border-[#2A2A30] bg-[#151518]" : table.estado === "sucia" ? "border-[#FFB020]/70 bg-[#221E16]" : ready || table.estado === "cuenta" ? "blink-ready bg-[#151916]" : "border-[#4A4A52] bg-[#24242A]";
+      const labelColor = table.estado === "libre" ? "text-[#34C759]" : table.estado === "sucia" ? "text-[#FFB020]" : ready || table.estado === "cuenta" ? "text-[#34C759]" : "text-[#E5E5EA]";
+      return `
+        <button onclick="handleTableClick('${table.id}')" class="${visual} group min-h-[168px] rounded-xl border p-4 text-left transition duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[#E5E5EA]/50">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-[#8E8E93]">Mesa</p>
+              <p class="mt-1 text-4xl font-light text-white">${table.numero}</p>
+            </div>
+            <span class="${labelColor} rounded-lg border border-current px-2 py-1 text-xs font-medium capitalize">${table.estado}</span>
+          </div>
+          <div class="mt-5 grid grid-cols-3 gap-2 text-xs">
+            <div class="rounded-lg bg-[#121214] px-3 py-2">
+              <p class="text-[#8E8E93]">Cap.</p>
+              <p class="mt-1 font-medium text-white">${table.capacidad}</p>
+            </div>
+            <div class="rounded-lg bg-[#121214] px-3 py-2">
+              <p class="text-[#8E8E93]">Tiempo</p>
+              <p class="mt-1 font-medium text-white" data-elapsed-table="${table.id}">${tableOpenMinutes(table)}</p>
+            </div>
+            <div class="rounded-lg bg-[#121214] px-3 py-2">
+              <p class="text-[#8E8E93]">Total</p>
+              <p class="mt-1 font-medium text-white">${money.format(table.totalActual || 0)}</p>
+            </div>
+          </div>
+          <p class="mt-4 text-xs text-[#8E8E93]">${activeOrders.length ? activeOrders.length + " comandas activas" : table.estado === "sucia" ? "Requiere limpieza" : "Sin comanda activa"}</p>
+        </button>
+      `;
+    }
+    function renderTableSidePanel(table) {
+      const orders = getActiveOrdersForTable(table.id);
+      const canPay = ["admin", "cajero"].includes(AppState.currentUser.rol);
+      if (table.estado === "sucia") {
+        return `
+          <div class="space-y-4">
+            <div>
+              <p class="text-sm text-[#8E8E93]">Mesa seleccionada</p>
+              <h2 class="mt-1 text-2xl font-light text-white">Mesa ${table.numero}</h2>
+            </div>
+            <div class="rounded-xl border border-[#FFB020]/50 bg-[#201B13] p-4">
+              <p class="text-sm font-medium text-[#FFB020]">Mesa sucia</p>
+              <p class="mt-2 text-sm text-[#8E8E93]">El pago fue procesado y la mesa debe limpiarse antes de reabrirse.</p>
+            </div>
+            <button onclick="cleanTable('${table.id}')" class="w-full rounded-xl bg-[#E5E5EA] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Marcar como limpia</button>
+          </div>
+        `;
+      }
+      return `
+        <div class="space-y-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-[#8E8E93]">Comanda actual</p>
+              <h2 class="mt-1 text-2xl font-light text-white">Mesa ${table.numero}</h2>
+            </div>
+            <span class="rounded-lg bg-[#2A2A30] px-3 py-1 text-xs capitalize text-[#E5E5EA]">${table.estado}</span>
+          </div>
+          <div class="max-h-[420px] space-y-3 overflow-auto thin-scroll">
+            ${orders.length ? orders.map(order => renderOrderSummary(order)).join("") : `<div class="rounded-xl border border-[#2A2A30] bg-[#121214] p-4 text-sm text-[#8E8E93]">No hay comandas enviadas todavía.</div>`}
+          </div>
+          <div class="rounded-xl border border-[#2A2A30] bg-[#121214] p-4">
+            <div class="flex justify-between text-sm text-[#8E8E93]"><span>Total activo</span><span class="font-medium text-white">${money.format(table.totalActual || 0)}</span></div>
+          </div>
+          <div class="grid gap-3">
+            <button onclick="handleTableClick('${table.id}')" class="rounded-xl bg-[#E5E5EA] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Abrir POS</button>
+            ${orders.length ? `<button onclick="requestBill('${table.id}')" class="rounded-xl border border-[#34C759]/55 px-4 py-3 text-sm font-medium text-[#34C759] transition duration-200 hover:bg-[#34C759]/10">Solicitar cuenta</button>` : ""}
+            ${canPay && orders.length ? `<button onclick="openPayment('${table.id}')" class="rounded-xl border border-[#2A2A30] px-4 py-3 text-sm font-medium text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]">Cerrar Cuenta / Pagar</button>` : ""}
+          </div>
+        </div>
+      `;
+    }
+    function renderOrderSummary(order) {
+      const table = getTable(order.mesaId);
+      return `
+        <article class="rounded-xl border border-[#2A2A30] bg-[#121214] p-4">
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-sm font-medium text-white">${table ? "Mesa " + table.numero : "Mesa"}</p>
+            <span class="${order.estado === "listo" ? "text-[#34C759]" : "text-[#E5E5EA]"} rounded-lg bg-[#1A1A1E] px-2 py-1 text-xs capitalize">${order.estado}</span>
+          </div>
+          <div class="mt-3 space-y-2">
+            ${order.items.map(item => {
+              const product = getProduct(item.id);
+              return `<div class="text-sm text-[#E5E5EA]"><span class="text-[#8E8E93]">${item.cantidad}x</span> ${escapeHtml(product?.nombre || item.id)}${item.notas ? `<p class="mt-1 text-xs text-[#8E8E93]">${escapeHtml(item.notas)}</p>` : ""}</div>`;
+            }).join("")}
+          </div>
+          <div class="mt-3 flex justify-between border-t border-[#2A2A30] pt-3 text-sm"><span class="text-[#8E8E93]">Total</span><span class="font-medium text-white">${money.format(order.total)}</span></div>
+        </article>
+      `;
+    }
+    function renderPOS() {
+      const table = AppState.selectedTableId ? getTable(AppState.selectedTableId) : null;
+      if (!table) {
+        return `
+          <section class="soft-panel rounded-xl p-8 text-center">
+            <p class="text-xl font-medium text-white">Selecciona una mesa para iniciar POS</p>
+            <p class="mt-2 text-sm text-[#8E8E93]">El punto de venta trabaja siempre vinculado a una mesa activa.</p>
+            <button onclick="setView('tables')" class="mt-6 rounded-xl bg-[#E5E5EA] px-5 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Ir a mesas</button>
+          </section>
+        `;
+      }
+      const filtered = AppState.menu.filter(product => {
+        const categoryMatch = AppState.activeCategory === "todas" || product.categoria === AppState.activeCategory;
+        const searchMatch = product.nombre.toLowerCase().includes(AppState.search.toLowerCase());
+        return categoryMatch && searchMatch;
+      });
+      const activeOrders = getActiveOrdersForTable(table.id);
+      const totals = calculateTotals(AppState.draftCart, AppState.tipPercent);
+      return `
+        <section class="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+          <div class="soft-panel rounded-xl p-5">
+            <div class="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p class="text-sm text-[#8E8E93]">Punto de venta</p>
+                <h1 class="mt-1 text-2xl font-light text-white">Mesa ${table.numero}</h1>
+              </div>
+              <input id="menu-search" value="${escapeHtml(AppState.search)}" oninput="setSearch(this.value)" class="w-full rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-sm text-white outline-none transition duration-200 focus:border-[#E5E5EA] lg:w-[320px]" placeholder="Buscar producto">
+            </div>
+            <div class="mb-4 flex gap-2 overflow-x-auto thin-scroll">
+              ${categories.map(category => `<button onclick="setCategory('${category}')" class="${AppState.activeCategory === category ? "bg-[#2A2A30] text-white" : "text-[#8E8E93] hover:bg-[#2A2A30] hover:text-white"} shrink-0 rounded-xl px-4 py-2 text-sm font-medium capitalize transition duration-200">${category}</button>`).join("")}
+            </div>
+            <div class="grid menu-grid gap-3">
+              ${filtered.map(product => renderProductCard(product)).join("")}
+            </div>
+          </div>
+          <aside class="soft-panel rounded-xl p-5">
+            <div class="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 class="text-xl font-medium text-white">Comanda</h2>
+                <p class="mt-1 text-sm text-[#8E8E93]">Mesa ${table.numero} · ${activeOrders.length} enviadas</p>
+              </div>
+              <button onclick="setView('tables')" class="rounded-lg px-3 py-2 text-sm text-[#8E8E93] transition duration-200 hover:bg-[#2A2A30] hover:text-white">Plano</button>
+            </div>
+            <div class="mb-4 max-h-48 space-y-2 overflow-auto thin-scroll">
+              ${activeOrders.length ? activeOrders.map(order => renderCompactOrder(order)).join("") : `<div class="rounded-xl border border-[#2A2A30] bg-[#121214] p-3 text-sm text-[#8E8E93]">Sin comandas enviadas.</div>`}
+            </div>
+            <div class="mb-4 border-t border-[#2A2A30] pt-4">
+              <p class="mb-3 text-sm font-medium text-white">Ítems nuevos</p>
+              <div class="max-h-[330px] space-y-3 overflow-auto thin-scroll">
+                ${AppState.draftCart.length ? AppState.draftCart.map((item, index) => renderCartItem(item, index)).join("") : `<div class="rounded-xl border border-[#2A2A30] bg-[#121214] p-4 text-center text-sm text-[#8E8E93]">Agrega productos desde el menú.</div>`}
+              </div>
+            </div>
+            <div class="space-y-3 rounded-xl border border-[#2A2A30] bg-[#121214] p-4">
+              <div class="flex justify-between text-sm"><span class="text-[#8E8E93]">Subtotal nuevo</span><span class="text-white">${money.format(totals.subtotal)}</span></div>
+              <div class="flex justify-between text-sm"><span class="text-[#8E8E93]">IVA 16%</span><span class="text-white">${money.format(totals.impuestos)}</span></div>
+              <div>
+                <p class="mb-2 text-sm text-[#8E8E93]">Propina</p>
+                <div class="grid grid-cols-3 gap-2">
+                  ${[0, 10, 15].map(tip => `<button onclick="setTip('${tip}')" class="${AppState.tipPercent === tip ? "bg-[#E5E5EA] text-black" : "border border-[#2A2A30] text-[#E5E5EA] hover:bg-[#2A2A30]"} rounded-xl px-3 py-2 text-sm font-medium transition duration-200">${tip}%</button>`).join("")}
+                </div>
+              </div>
+              <div class="flex justify-between border-t border-[#2A2A30] pt-3 text-base"><span class="text-[#E5E5EA]">Gran total nuevo</span><span class="font-bold text-white">${money.format(totals.total)}</span></div>
+              <div class="grid gap-3 pt-2">
+                <button onclick="sendToKitchen()" class="${AppState.draftCart.length ? "bg-[#E5E5EA] text-black hover:opacity-85" : "cursor-not-allowed bg-[#2A2A30] text-[#8E8E93]"} rounded-xl px-4 py-3 text-sm font-bold transition duration-200">Enviar a Cocina</button>
+                <button onclick="requestBill('${table.id}')" class="rounded-xl border border-[#34C759]/50 px-4 py-3 text-sm font-medium text-[#34C759] transition duration-200 hover:bg-[#34C759]/10">Solicitar cuenta</button>
+                ${["admin", "cajero"].includes(AppState.currentUser.rol) ? `<button onclick="openPayment('${table.id}')" class="rounded-xl border border-[#2A2A30] px-4 py-3 text-sm font-medium text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]">Cerrar Cuenta / Pagar</button>` : ""}
+              </div>
+            </div>
+          </aside>
+        </section>
+      `;
+    }
+    function renderProductCard(product) {
+      return `
+        <button onclick="addToCart('${product.id}')" class="group overflow-hidden rounded-xl border border-[#2A2A30] bg-[#121214] text-left transition duration-200 ease-in-out hover:-translate-y-0.5 hover:border-[#E5E5EA]/50">
+          <div class="product-surface flex h-24 items-center justify-center border-b border-[#2A2A30]">
+            ${productGlyph(product.categoria)}
+          </div>
+          <div class="p-3">
+            <p class="line-clamp-2 min-h-10 text-sm font-medium text-white">${escapeHtml(product.nombre)}</p>
+            <div class="mt-3 flex items-center justify-between gap-2">
+              <span class="text-sm text-[#E5E5EA]">${money.format(product.precio)}</span>
+              <span class="grid h-7 w-7 place-items-center rounded-lg bg-[#2A2A30] text-white transition duration-200 group-hover:bg-[#E5E5EA] group-hover:text-black">+</span>
+            </div>
+          </div>
+        </button>
+      `;
+    }
+    function productGlyph(category) {
+      const map = {
+        entradas: ["M 18 40 Q 32 18 46 40", "M 24 42 H 42"],
+        fuertes: ["M 18 32 H 46", "M 24 24 H 40", "M 21 40 H 43"],
+        bebidas: ["M 24 18 H 42 L 38 46 H 28 Z", "M 27 25 H 39"],
+        postres: ["M 20 42 H 44", "M 24 42 L 28 24 H 36 L 40 42"]
+      };
+      const paths = map[category] || map.entradas;
+      return `<svg viewBox="0 0 64 64" class="h-16 w-16 text-[#E5E5EA]" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${paths.map(path => `<path d="${path}"></path>`).join("")}</svg>`;
+    }
+    function renderCompactOrder(order) {
+      return `
+        <div class="rounded-xl border border-[#2A2A30] bg-[#121214] p-3">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium text-white">${order.items.length} ítems</span>
+            <span class="${order.estado === "listo" ? "text-[#34C759]" : "text-[#8E8E93]"} capitalize">${order.estado}</span>
+          </div>
+          <p class="mt-1 text-xs text-[#8E8E93]">${money.format(order.total)} · ${new Date(order.timestamp).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</p>
+        </div>
+      `;
+    }
+    function renderCartItem(item, index) {
+      const product = getProduct(item.id);
+      if (!product) {
+        return "";
+      }
+      return `
+        <div class="rounded-xl border border-[#2A2A30] bg-[#121214] p-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-white">${escapeHtml(product.nombre)}</p>
+              <p class="mt-1 text-xs text-[#8E8E93]">${money.format(product.precio)} c/u</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="changeCartQuantity(${index}, -1)" class="grid h-8 w-8 place-items-center rounded-lg border border-[#2A2A30] text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]">−</button>
+              <span class="w-7 text-center text-sm font-medium text-white">${item.cantidad}</span>
+              <button onclick="changeCartQuantity(${index}, 1)" class="grid h-8 w-8 place-items-center rounded-lg border border-[#2A2A30] text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]">+</button>
+            </div>
+          </div>
+          <textarea oninput="setCartNote(${index}, this.value)" class="mt-3 min-h-16 w-full resize-none rounded-xl border border-[#2A2A30] bg-[#1A1A1E] px-3 py-2 text-sm text-white outline-none focus:border-[#E5E5EA]" placeholder="Nota de cocina">${escapeHtml(item.notas)}</textarea>
+        </div>
+      `;
+    }
+    function renderKDS() {
+      const orders = getKitchenOrders();
+      return `
+        <section class="soft-panel rounded-xl p-5">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 class="text-xl font-medium tracking-tight text-white">Kitchen Display System</h1>
+              <p class="mt-1 text-sm text-[#8E8E93]">Comandas entrantes del POS con tiempo transcurrido.</p>
+            </div>
+            <span class="rounded-xl bg-[#2A2A30] px-4 py-2 text-sm text-[#E5E5EA]">${orders.length} pendientes</span>
+          </div>
+          ${orders.length ? `
+            <div class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+              ${orders.map(order => renderKDSCard(order)).join("")}
+            </div>
+          ` : `
+            <div class="flex min-h-[420px] items-center justify-center rounded-xl border border-[#2A2A30] bg-[#121214] p-8 text-center">
+              <div>
+                <p class="text-xl font-medium text-white">Sin comandas pendientes</p>
+                <p class="mt-2 text-sm text-[#8E8E93]">Las nuevas órdenes enviadas desde POS aparecerán aquí.</p>
+              </div>
+            </div>
+          `}
+        </section>
+      `;
+    }
+    function renderKDSCard(order) {
+      const table = getTable(order.mesaId);
+      return `
+        <article class="${order.preparado ? "kds-preparing" : "kds-waiting"} rounded-xl border border-[#2A2A30] p-5">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-[#8E8E93]">Mesa</p>
+              <h2 class="mt-1 text-3xl font-light text-white">${table ? table.numero : "?"}</h2>
+            </div>
+            <div class="text-right">
+              <p class="text-sm text-[#8E8E93]">Tiempo</p>
+              <p class="mt-1 font-mono text-2xl text-[#E5E5EA]" data-elapsed-order="${order.id}">${orderElapsed(order)}</p>
+            </div>
+          </div>
+          <div class="mt-5 space-y-3">
+            ${order.items.map(item => {
+              const product = getProduct(item.id);
+              return `
+                <div class="rounded-xl border border-[#2A2A30] bg-[#121214] p-3">
+                  <p class="text-sm font-medium text-white"><span class="text-[#8E8E93]">${item.cantidad}x</span> ${escapeHtml(product?.nombre || item.id)}</p>
+                  ${item.notas ? `<p class="mt-2 rounded-lg bg-[#1A1A1E] px-3 py-2 text-xs text-[#E5E5EA]">${escapeHtml(item.notas)}</p>` : ""}
+                </div>
+              `;
+            }).join("")}
+          </div>
+          <div class="mt-5 grid grid-cols-2 gap-3">
+            <button onclick="markPreparing('${order.id}')" class="rounded-xl border border-[#2A2A30] px-4 py-3 text-sm font-medium text-[#E5E5EA] transition duration-200 hover:bg-[#2A2A30]">Preparar</button>
+            <button onclick="markReady('${order.id}')" class="rounded-xl bg-[#34C759] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Listo</button>
+          </div>
+        </article>
+      `;
+    }
+    function renderInventory() {
+      return `
+        <section class="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+          <div class="soft-panel rounded-xl p-5">
+            <div class="mb-5 flex items-end justify-between gap-4">
+              <div>
+                <h1 class="text-xl font-medium tracking-tight text-white">Inventario local</h1>
+                <p class="mt-1 text-sm text-[#8E8E93]">Stock descontado automáticamente al enviar comandas.</p>
+              </div>
+              <span class="rounded-xl bg-[#2A2A30] px-4 py-2 text-sm text-[#E5E5EA]">${getCriticalInventory().length} críticos</span>
+            </div>
+            <div class="overflow-auto thin-scroll">
+              <table class="w-full min-w-[760px] border-separate border-spacing-y-2 text-left">
+                <thead>
+                  <tr class="text-xs uppercase tracking-wide text-[#8E8E93]">
+                    <th class="px-3 py-2 font-medium">Nombre del Insumo</th>
+                    <th class="px-3 py-2 font-medium">Cantidad Disponible</th>
+                    <th class="px-3 py-2 font-medium">Unidad de Medida</th>
+                    <th class="px-3 py-2 font-medium">Estado de Stock</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${AppState.inventory.map(item => {
+                    const critical = Number(item.cantidadActual) <= Number(item.stockMinimo);
+                    return `
+                      <tr class="rounded-xl bg-[#121214]">
+                        <td class="rounded-l-xl border-y border-l border-[#2A2A30] px-3 py-3 text-sm font-medium text-white">${escapeHtml(item.nombre)}</td>
+                        <td class="border-y border-[#2A2A30] px-3 py-3 text-sm text-[#E5E5EA]">${Number(item.cantidadActual).toLocaleString("es-MX", { maximumFractionDigits: 3 })}</td>
+                        <td class="border-y border-[#2A2A30] px-3 py-3 text-sm text-[#8E8E93]">${escapeHtml(item.unidad)}</td>
+                        <td class="rounded-r-xl border-y border-r border-[#2A2A30] px-3 py-3 text-sm">${critical ? `<span class="rounded-lg border border-[#FF453A]/60 px-3 py-1 text-[#FF453A]">Crítico</span>` : `<span class="rounded-lg border border-[#34C759]/50 px-3 py-1 text-[#34C759]">Ok</span>`}</td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <aside class="space-y-5">
+            <section class="soft-panel rounded-xl p-5">
+              <h2 class="text-xl font-medium text-white">Reabastecimiento</h2>
+              <p class="mt-1 text-sm text-[#8E8E93]">Suma stock a cualquier insumo de la base local.</p>
+              <form onsubmit="addStock(event)" class="mt-5 grid gap-3">
+                <select onchange="updateStockField('insumoId', this.value)" class="rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-sm text-white outline-none focus:border-[#E5E5EA]">
+                  ${AppState.inventory.map(item => `<option value="${item.id}" ${AppState.stockForm.insumoId === item.id ? "selected" : ""}>${escapeHtml(item.nombre)} · ${escapeHtml(item.unidad)}</option>`).join("")}
+                </select>
+                <input value="${escapeHtml(AppState.stockForm.cantidad)}" oninput="updateStockField('cantidad', this.value)" class="rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-sm text-white outline-none focus:border-[#E5E5EA]" placeholder="Cantidad a agregar" inputmode="decimal">
+                <button class="rounded-xl bg-[#E5E5EA] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Actualizar stock</button>
+              </form>
+            </section>
+            <section class="soft-panel rounded-xl p-5">
+              <h2 class="text-xl font-medium text-white">Base local</h2>
+              <p class="mt-1 text-sm text-[#8E8E93]">Los datos se guardan en el almacenamiento local del equipo donde se ejecute.</p>
+              <button onclick="LocalDatabase.reset()" class="mt-5 w-full rounded-xl border border-[#FF453A]/50 px-4 py-3 text-sm font-medium text-[#FF453A] transition duration-200 hover:bg-[#FF453A]/10">Restaurar datos demo</button>
+            </section>
+          </aside>
+        </section>
+      `;
+    }
+    function renderPaymentModal() {
+      const table = getTable(AppState.paymentModal.mesaId);
+      const orders = table ? getActiveOrdersForTable(table.id) : [];
+      const subtotal = orders.reduce((sum, order) => sum + Number(order.subtotal || 0), 0);
+      const impuestos = orders.reduce((sum, order) => sum + Number(order.impuestos || 0), 0);
+      const propina = orders.reduce((sum, order) => sum + Number(order.propina || 0), 0);
+      const total = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+      return `
+        <div class="modal-backdrop fixed inset-0 z-40 grid place-items-center p-4">
+          <section class="w-full max-w-lg rounded-xl border border-[#2A2A30] bg-[#1A1A1E] p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm text-[#8E8E93]">Confirmación de pago</p>
+                <h2 class="mt-1 text-2xl font-light text-white">${table ? "Mesa " + table.numero : "Mesa"}</h2>
+              </div>
+              <button onclick="closePaymentModal()" class="rounded-lg px-3 py-2 text-[#8E8E93] transition duration-200 hover:bg-[#2A2A30] hover:text-white">Cerrar</button>
+            </div>
+            <div class="mt-5 space-y-3 rounded-xl border border-[#2A2A30] bg-[#121214] p-4">
+              <div class="flex justify-between text-sm"><span class="text-[#8E8E93]">Subtotal</span><span class="text-white">${money.format(subtotal)}</span></div>
+              <div class="flex justify-between text-sm"><span class="text-[#8E8E93]">IVA</span><span class="text-white">${money.format(impuestos)}</span></div>
+              <div class="flex justify-between text-sm"><span class="text-[#8E8E93]">Propina</span><span class="text-white">${money.format(propina)}</span></div>
+              <div class="flex justify-between border-t border-[#2A2A30] pt-3 text-lg"><span class="text-[#E5E5EA]">Total</span><span class="font-bold text-white">${money.format(total)}</span></div>
+            </div>
+            <div class="mt-5 grid grid-cols-2 gap-3">
+              ${["Efectivo", "Tarjeta"].map(method => `<button onclick="setPaymentMethod('${method}')" class="${AppState.paymentModal.metodo === method ? "bg-[#E5E5EA] text-black" : "border border-[#2A2A30] text-[#E5E5EA] hover:bg-[#2A2A30]"} rounded-xl px-4 py-3 text-sm font-bold transition duration-200">${method}</button>`).join("")}
+            </div>
+            <button onclick="processPayment()" class="mt-4 w-full rounded-xl bg-[#34C759] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Procesar pago</button>
+          </section>
+        </div>
+      `;
+    }
+    function renderCashModal() {
+      const paidOrders = getPaidOrders();
+      const total = paidOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+      const cash = paidOrders.filter(order => order.metodoPago === "Efectivo").reduce((sum, order) => sum + Number(order.total || 0), 0);
+      const card = paidOrders.filter(order => order.metodoPago === "Tarjeta").reduce((sum, order) => sum + Number(order.total || 0), 0);
+      return `
+        <div class="modal-backdrop fixed inset-0 z-40 grid place-items-center p-4">
+          <section class="w-full max-w-lg rounded-xl border border-[#2A2A30] bg-[#1A1A1E] p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm text-[#8E8E93]">Turno actual</p>
+                <h2 class="mt-1 text-2xl font-light text-white">Cierre de Caja</h2>
+              </div>
+              <button onclick="closeCashModal()" class="rounded-lg px-3 py-2 text-[#8E8E93] transition duration-200 hover:bg-[#2A2A30] hover:text-white">Cerrar</button>
+            </div>
+            <div class="mt-5 grid gap-3">
+              ${metricLine("Órdenes pagadas", paidOrders.length)}
+              ${metricLine("Efectivo", money.format(cash))}
+              ${metricLine("Tarjeta", money.format(card))}
+              ${metricLine("Total neto", money.format(total))}
+            </div>
+            <button onclick="registerCashClosure()" class="mt-5 w-full rounded-xl bg-[#E5E5EA] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Registrar cierre local</button>
+          </section>
+        </div>
+      `;
+    }
+    function metricLine(label, value) {
+      return `<div class="flex items-center justify-between rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-sm"><span class="text-[#8E8E93]">${label}</span><span class="font-medium text-white">${value}</span></div>`;
+    }
+    function renderLockScreen() {
+      return `
+        <div class="modal-backdrop fixed inset-0 z-50 grid place-items-center p-4">
+          <section class="w-full max-w-sm rounded-xl border border-[#2A2A30] bg-[#1A1A1E] p-6 text-center">
+            <div class="mx-auto grid h-14 w-14 place-items-center rounded-xl border border-[#2A2A30] bg-[#121214] text-[#E5E5EA]">${lockIcon()}</div>
+            <h2 class="mt-5 text-2xl font-light text-white">Pantalla bloqueada</h2>
+            <p class="mt-2 text-sm text-[#8E8E93]">${escapeHtml(AppState.currentUser.nombre)} · ${roleLabels[AppState.currentUser.rol]}</p>
+            <input id="unlock-pin" value="${escapeHtml(AppState.lockPin)}" oninput="AppState.lockPin = this.value.replace(/\\D/g, '').slice(0, 8)" onkeydown="if(event.key === 'Enter') unlockScreen()" class="mt-5 w-full rounded-xl border border-[#2A2A30] bg-[#121214] px-4 py-3 text-center text-lg tracking-[0.35em] text-white outline-none focus:border-[#E5E5EA]" inputmode="numeric" type="password" placeholder="PIN">
+            <button onclick="unlockScreen()" class="mt-4 w-full rounded-xl bg-[#E5E5EA] px-4 py-3 text-sm font-bold text-black transition duration-200 hover:opacity-85">Desbloquear</button>
+          </section>
+        </div>
+      `;
+    }
+    function bellIcon() {
+      return `<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>`;
+    }
+    function warningIcon() {
+      return `<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>`;
+    }
+    function lockIcon() {
+      return `<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+    }
+    window.setView = setView;
+    window.changeUser = changeUser;
+    window.lockScreen = lockScreen;
+    window.unlockScreen = unlockScreen;
+    window.handleTableClick = handleTableClick;
+    window.cleanTable = cleanTable;
+    window.setCategory = setCategory;
+    window.setSearch = setSearch;
+    window.addToCart = addToCart;
+    window.changeCartQuantity = changeCartQuantity;
+    window.setCartNote = setCartNote;
+    window.setTip = setTip;
+    window.sendToKitchen = sendToKitchen;
+    window.requestBill = requestBill;
+    window.openPayment = openPayment;
+    window.setPaymentMethod = setPaymentMethod;
+    window.closePaymentModal = closePaymentModal;
+    window.processPayment = processPayment;
+    window.markPreparing = markPreparing;
+    window.markReady = markReady;
+    window.addStock = addStock;
+    window.updateStockField = updateStockField;
+    window.createUser = createUser;
+    window.updateUserForm = updateUserForm;
+    window.deleteUser = deleteUser;
+    window.openCashModal = openCashModal;
+    window.closeCashModal = closeCashModal;
+    window.registerCashClosure = registerCashClosure;
+    window.dismissNotice = dismissNotice;
+    window.LocalDatabase = LocalDatabase;
+    window.AppState = AppState;
+    LocalDatabase.load();
+    ensureAllowedView();
+    render();
+    setInterval(updateClock, 1000);
+  </script>
+</body>
+</html>

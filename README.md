@@ -1,69 +1,56 @@
-# Restaurant OS Local
+# Restaurant OS (Open Source Professional Management Software)
 
-Sistema local de gestión para restaurantes en un solo archivo HTML: ERP, POS, plano de mesas, KDS, inventario, usuarios y cierre de caja.
+Sistema local de gestión profesional para restaurantes basado en Node.js, Express, SQLite y Server-Sent Events (SSE). Diseñado para correr localmente de forma autónoma o en red local para sincronizar terminales múltiples (POS, Cajero, KDS Cocina, Configuración ERP).
 
-## Características
+## Características Profesionales
 
-- Aplicación 100% local, sin nube ni servidor obligatorio.
-- Archivo principal único: `index.html`.
-- Persistencia en `localStorage` del navegador del equipo.
-- Roles RBAC: administrador, mesero, cajero y cocina.
-- Plano de 12 mesas con estados operativos.
-- POS con carrito, notas de cocina, IVA 16%, propina y envío a cocina.
-- KDS con temporizador, preparación y órdenes listas.
-- Inventario con descuento automático por recetas y reabastecimiento.
-- Alta local de usuarios y administradores.
-- Cierre de caja para cajero y administrador.
+- **Backend en Node.js + Express**: Servidor HTTP nativo para la persistencia centralizada y el manejo seguro del flujo comercial.
+- **Base de Datos SQLite**: Almacenamiento transaccional robusto en un archivo local (`restaurant.db`). Incluye migración de esquema automática y semilla (seeding) de prueba en la primera ejecución.
+- **Sincronización en Tiempo Real (SSE)**: Canal de Server-Sent Events (`/api/events`) que alerta y sincroniza al instante todas las pantallas de los usuarios cuando ocurre un cambio en el salón, inventario o comandas (ej. la cocina recibe una alerta sonora de comanda nueva en tiempo real cuando el mesero la envía desde su terminal).
+- **Roles RBAC (Control de Acceso)**: Administrador, Mesero, Cajero y Cocina.
+- **Gestión de Inventario Real**:
+  - Catálogo de insumos en bodega con unidad de medida, costos reales y stock mínimo con alertas visuales de insumos críticos.
+  - Recetas dinámicas para cada platillo del menú que descuentan automáticamente los insumos en miligramos/gramos/piezas de la bodega al enviar la orden.
+- **Plano de Salón Interactivo**: Distribución dinámica de mesas y estados (libre, ocupada, sucia, cuenta pedida) con persistencia centralizada.
+- **Historial de Ventas y Finanzas**:
+  - Reporte e historial detallado de cortes de caja (cierres de turno).
+  - Exportación completa del libro de ventas a formato CSV compatible con Microsoft Excel.
+  - Descarga e importación de copias de seguridad de toda la base de datos en formato JSON directo desde el panel de ajustes.
+- **POS de Facturación Profesional**: Panel táctil intuitivo, modificadores (sin cebolla, término medio, etc.), descuentos, propina sugerida y ticketera térmica integrada con hojas de estilo CSS preparadas para impresoras físicas.
 
-## Instalación rápida
+## Instalación y Arranque Rápido
 
-1. Descarga o clona el repositorio.
-2. Abre `index.html` con Chrome, Edge, Firefox o Safari.
-3. Usa uno de los usuarios demo para entrar al flujo:
+### Requisitos previos
 
-| Usuario | Rol | PIN |
+- Node.js instalado (Versión 16 o superior).
+
+### Instrucciones de inicio
+
+1. Clona o descarga el código fuente del proyecto.
+2. Abre tu terminal de comandos en la carpeta raíz del proyecto.
+3. Instala las dependencias necesarias:
+   ```bash
+   npm install
+   ```
+4. Inicia el servidor de la aplicación:
+   ```bash
+   npm start
+   ```
+5. Abre en tu navegador de internet (Chrome, Edge, Firefox, etc.) la siguiente URL:
+   ```
+   http://localhost:3000
+   ```
+   *Nota: Puedes abrir esta dirección en múltiples dispositivos (tablets, teléfonos o PCs) conectados a la misma red local (LAN) usando la IP local de la computadora servidor.*
+
+## Usuarios Demo de Acceso
+
+| Rol | Usuario Demo | PIN de Acceso |
 | --- | --- | --- |
-| Admin General | Administrador | `0000` |
-| Ana Mesas | Mesero | `1111` |
-| Luis Caja | Cajero | `2222` |
-| Mar Cocina | Cocina | `3333` |
-
-## Uso local
-
-La app guarda datos en el almacenamiento local del navegador donde se abre. Cada computadora mantiene su propia base local. Para compartir datos entre equipos se puede extender el proyecto con una capa opcional de SQLite, IndexedDB sincronizado o una API local, manteniendo el `index.html` como interfaz.
-
-## Flujo recomendado
-
-1. Entra como mesero o administrador.
-2. Abre una mesa libre desde el plano de mesas.
-3. Agrega productos en POS, ajusta notas, propina y envía a cocina.
-4. Entra como cocina y marca la orden como `Preparar` o `Listo`.
-5. Entra como cajero o administrador, solicita la cuenta y procesa el pago.
-6. Marca la mesa como limpia para volverla a usar.
-
-## Modificar el sistema
-
-Todo el código está en `index.html`.
-
-Las estructuras principales están en `AppState`:
-
-- `users`
-- `currentUser`
-- `tables`
-- `menu`
-- `inventory`
-- `orders`
-
-Para agregar productos o recetas modifica el arreglo `menu`. Para cambiar insumos modifica `inventory`. Cada producto tiene `stockInsumos`, que define cuánto inventario se descuenta al enviar una comanda.
-
-## Publicar en GitHub Pages
-
-1. Sube el repositorio a GitHub.
-2. Ve a `Settings`.
-3. Entra a `Pages`.
-4. Selecciona la rama principal y la carpeta raíz.
-5. Guarda los cambios.
+| **Administrador** | Admin General | `0000` |
+| **Mesero** | Ana Mesas | `1111` |
+| **Cajero** | Luis Caja | `2222` |
+| **Cocina** | Mar Cocina | `3333` |
 
 ## Licencia
 
-MIT. Puedes usarlo, modificarlo y distribuirlo libremente.
+Este proyecto está bajo la Licencia MIT. Libre de usar, modificar y distribuir comercialmente.

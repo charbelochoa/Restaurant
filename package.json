@@ -1,0 +1,23 @@
+{
+  "name": "restaurant-os",
+  "version": "1.0.0",
+  "description": "Sistema de gestión local profesional para restaurantes con SQLite y Express",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "pos",
+    "restaurant",
+    "erp",
+    "express",
+    "sqlite"
+  ],
+  "author": "Open Source",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "sqlite3": "^5.1.7"
+  }
+}
